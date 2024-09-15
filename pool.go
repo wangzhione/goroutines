@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 )
 
+// task list
 type task struct {
 	ctx context.Context
 	f   func()
@@ -19,12 +20,12 @@ var taskZero task
 
 var taskPool = sync.Pool{New: func() any { return new(task) }}
 
-func taskPoolRecycle(t *task) {
+func (t *task) recycle() {
 	*t = taskZero
 	taskPool.Put(t)
 }
 
-func taskPoolGet(ctx context.Context, f func()) *task {
+func newTask(ctx context.Context, f func()) *task {
 	t := taskPool.Get().(*task)
 	t.ctx = ctx
 	t.f = f
@@ -32,7 +33,7 @@ func taskPoolGet(ctx context.Context, f func()) *task {
 }
 
 type pool struct {
-	// linked list of tasks
+	// linked list of tasks (tail push head pop)
 	sync.Mutex
 	head  *task
 	tail  *task
@@ -64,11 +65,12 @@ func (p *pool) Worker() int32 {
 
 // SetPanicHandler the func here will be called after the panic has been recovered.
 func (p *pool) SetPanicHandler(handler func(context.Context, any)) {
+	// handler context by into task::context
 	p.panicHandler = handler
 }
 
 func (p *pool) Go(ctx context.Context, f func()) {
-	t := taskPoolGet(ctx, f)
+	t := newTask(ctx, f)
 
 	p.Lock()
 	if p.head == nil {
@@ -88,15 +90,17 @@ func (p *pool) Go(ctx context.Context, f func()) {
 	if atomic.LoadInt32(&p.count) > 0 {
 		worker := p.Worker()
 		if worker == 0 || worker < atomic.LoadInt32(&p.capacity) {
+			atomic.AddInt32(&p.worker, 1)
+
 			go p.run()
 		}
 	}
 }
 
 func (p *pool) run() {
-	atomic.AddInt32(&p.worker, 1)
+	defer atomic.AddInt32(&p.worker, -1)
 
-	for {
+	for atomic.LoadInt32(&p.count) > 0 {
 
 		// pop head after run task
 		var now *task
@@ -105,13 +109,12 @@ func (p *pool) run() {
 		if p.head == nil {
 			// if there's no task to do, exit
 			p.Unlock()
-			atomic.AddInt32(&p.worker, -1)
 			return
 		}
 
+		p.count--
 		now = p.head
 		p.head = now.next
-		p.count--
 		p.Unlock()
 
 		func() {
@@ -130,6 +133,6 @@ func (p *pool) run() {
 			now.f()
 		}()
 
-		taskPoolRecycle(now)
+		now.recycle()
 	}
 }
