@@ -16,22 +16,6 @@ type task struct {
 	next *task
 }
 
-var taskZero task
-
-var taskPool = sync.Pool{New: func() any { return new(task) }}
-
-func (t *task) recycle() {
-	*t = taskZero
-	taskPool.Put(t)
-}
-
-func newTask(ctx context.Context, f func()) *task {
-	t := taskPool.Get().(*task)
-	t.ctx = ctx
-	t.f = f
-	return t
-}
-
 type pool struct {
 	// linked list of tasks (tail push head pop)
 	sync.Mutex
@@ -64,7 +48,7 @@ func (p *pool) SetPanicHandler(handler func(context.Context, any)) {
 }
 
 func (p *pool) Go(ctx context.Context, f func()) {
-	task := newTask(ctx, f)
+	task := &task{ctx: ctx, f: f}
 
 	// tail push
 	p.Lock()
@@ -118,7 +102,5 @@ func (p *pool) run() {
 
 			now.f()
 		}()
-
-		now.recycle()
 	}
 }
