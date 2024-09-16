@@ -35,9 +35,8 @@ func newTask(ctx context.Context, f func()) *task {
 type pool struct {
 	// linked list of tasks (tail push head pop)
 	sync.Mutex
-	head  *task
-	tail  *task
-	count int32
+	head *task
+	tail *task
 
 	// capacity of the pool, the maximum number of goroutines that are actually working
 	capacity int32
@@ -58,11 +57,6 @@ func (p *pool) SetCapacity(capacity int32) {
 	atomic.StoreInt32(&p.capacity, capacity)
 }
 
-// Worker 可以用于线上统计 worker goroutine 数量
-func (p *pool) Worker() int32 {
-	return atomic.LoadInt32(&p.worker)
-}
-
 // SetPanicHandler the func here will be called after the panic has been recovered.
 func (p *pool) SetPanicHandler(handler func(context.Context, any)) {
 	// handler context by into task::context
@@ -70,37 +64,30 @@ func (p *pool) SetPanicHandler(handler func(context.Context, any)) {
 }
 
 func (p *pool) Go(ctx context.Context, f func()) {
-	t := newTask(ctx, f)
+	task := newTask(ctx, f)
 
+	// tail push
 	p.Lock()
 	if p.head == nil {
-		p.head = t
-		p.tail = t
+		p.head = task
 	} else {
-		p.tail.next = t
-		p.tail = t
+		p.tail.next = task
 	}
-	p.count++
+	p.tail = task
 	p.Unlock()
 
-	// The following two conditions are met:
-	// 1. the number of tasks is greater than the threshold.
-	// 2. The current number of workers is less than the upper limit p.cap.
-	// or there are currently no workers.
-	if atomic.LoadInt32(&p.count) > 0 {
-		worker := p.Worker()
-		if worker == 0 || worker < atomic.LoadInt32(&p.capacity) {
-			atomic.AddInt32(&p.worker, 1)
+	// The current number of workers is less than the upper limit p.cap.
+	if atomic.LoadInt32(&p.worker) < atomic.LoadInt32(&p.capacity) {
+		atomic.AddInt32(&p.worker, 1)
 
-			go p.run()
-		}
+		go p.run()
 	}
 }
 
 func (p *pool) run() {
 	defer atomic.AddInt32(&p.worker, -1)
 
-	for atomic.LoadInt32(&p.count) > 0 {
+	for {
 
 		// pop head after run task
 		var now *task
@@ -112,7 +99,6 @@ func (p *pool) run() {
 			return
 		}
 
-		p.count--
 		now = p.head
 		p.head = now.next
 		p.Unlock()
