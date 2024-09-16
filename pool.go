@@ -18,6 +18,8 @@ type task struct {
 
 type pool struct {
 	// linked list of tasks (tail push head pop)
+	// 默认并发处理任务不多, 如果多 chan task 带 buffer 效果更好些, 也存在隐患例如生产者阻塞
+	// 无锁队列的话业务层代码复杂度过高, 并且业界正确的无锁代码库可能都是 ?
 	sync.Mutex
 	head *task
 	tail *task
