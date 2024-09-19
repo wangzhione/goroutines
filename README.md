@@ -6,7 +6,7 @@ goroutines is a simple goroutine pool which aims to reuse goroutines and limit t
 
 ## example
 
-**Step 0 : main.init add goroutines.InitPanicHandler [optional]** 
+**[optional] Step 0 : main.init add goroutines.InitPanicHandler** 
 
 ```Go
 // register global panic handler
@@ -20,5 +20,7 @@ goroutines.InitPanicHandler(func (ctx context.Context, cover any) {
 ```Go
 o := goroutines.NewPool(8)
 
-o.Go(ctx, func(){})
+o.Go(ctx, func(){
+    // Your business
+})
 ```
