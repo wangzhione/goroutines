@@ -61,8 +61,8 @@ func (p *pool) Go(ctx context.Context, f func()) {
 
 	// The current number of workers is less than the upper limit p.cap.
 	// not atomic.LoadInt32(&p.capacity) 设计原因是 不希望提供运行时动态的修改 worker limit 能力, 因为用不上
-	if atomic.LoadInt32(&p.worker) < p.capacity {
-		atomic.AddInt32(&p.worker, 1)
+	worker := atomic.LoadInt32(&p.worker)
+	if worker < p.capacity && atomic.CompareAndSwapInt32(&p.worker, worker, worker+1) {
 		go p.running()
 	}
 }

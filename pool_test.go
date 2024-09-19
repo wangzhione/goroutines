@@ -28,7 +28,7 @@ func testPanicFunc() {
 const bechmarkCount = 10000000
 
 func TestPool(t *testing.T) {
-	p := NewPool(16)
+	p := NewPool(8)
 	var n int32
 
 	var wg sync.WaitGroup
@@ -174,4 +174,47 @@ func TestGoroutines(t *testing.T) {
 	p.Go(ctx, fCat)
 
 	wait.Wait()
+}
+
+func TestCompareInc(t *testing.T) {
+	var capacity int32 = 2
+	var worker int32
+
+	for range 2000 {
+		go func() {
+			old := atomic.LoadInt32(&worker)
+			if old < capacity {
+				if atomic.CompareAndSwapInt32(&worker, old, old+1) {
+					if worker > capacity {
+						t.Logf("worker=%d, capacity=%d", worker, capacity)
+					}
+
+					go func() {
+						defer atomic.AddInt32(&worker, -1)
+					}()
+				}
+			}
+		}()
+	}
+}
+
+func TestCompareInc2(t *testing.T) {
+	var capacity int32 = 2
+	var worker int32
+
+	for range 2000 {
+		go func() {
+			if atomic.LoadInt32(&worker) < capacity {
+				atomic.AddInt32(&worker, 1)
+
+				if worker > capacity {
+					t.Logf("worker=%d, capacity=%d", worker, capacity)
+				}
+
+				go func() {
+					defer atomic.AddInt32(&worker, -1)
+				}()
+			}
+		}()
+	}
 }
