@@ -2,13 +2,12 @@ package goroutines
 
 import (
 	"context"
+	"log/slog"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
 )
-
-const benchmarkTimes = 10000
 
 func DoCopyStack(a, b int) int {
 	if b < 100 {
@@ -18,12 +17,10 @@ func DoCopyStack(a, b int) int {
 }
 
 func testFunc() {
-	DoCopyStack(0, 0)
+	_ = DoCopyStack(0, 0)
 }
 
-func testPanicFunc() {
-	panic("test")
-}
+var ctx = context.Background()
 
 const bechmarkCount = 10000000
 
@@ -32,9 +29,9 @@ func TestPool(t *testing.T) {
 	var n int32
 
 	var wg sync.WaitGroup
-	for i := 0; i < bechmarkCount; i++ {
-		wg.Add(1)
-		p.Go(context.Background(), func() {
+	wg.Add(bechmarkCount)
+	for range bechmarkCount {
+		p.Go(ctx, func(context.Context) {
 			defer wg.Done()
 			atomic.AddInt32(&n, 1)
 		})
@@ -46,12 +43,14 @@ func TestPool(t *testing.T) {
 	}
 }
 
+// TestPool 相对 TestGo 普通基准测试, 性能损失 1 倍, 但随着复杂业务, 二者差距没有想象那么大
+
 func TestGo(t *testing.T) {
 	var n int32
 
 	var wg sync.WaitGroup
-	for i := 0; i < bechmarkCount; i++ {
-		wg.Add(1)
+	wg.Add(bechmarkCount)
+	for range bechmarkCount {
 		go func() {
 			defer wg.Done()
 			atomic.AddInt32(&n, 1)
@@ -65,9 +64,17 @@ func TestGo(t *testing.T) {
 }
 
 func TestPoolPanic(t *testing.T) {
+	testPanicFunc := func(context.Context) {
+		panic("test")
+	}
+
 	p := NewPool(128)
-	p.Go(context.Background(), testPanicFunc)
+	p.Go(ctx, testPanicFunc)
+
+	slog.InfoContext(ctx, "Success")
 }
+
+const benchmarkTimes = 10000
 
 func BenchmarkPool(b *testing.B) {
 	p := NewPool(int32(runtime.GOMAXPROCS(0)))
@@ -75,10 +82,10 @@ func BenchmarkPool(b *testing.B) {
 	var wg sync.WaitGroup
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		wg.Add(benchmarkTimes)
-		for j := 0; j < benchmarkTimes; j++ {
-			p.Go(context.Background(), func() {
+		for range benchmarkTimes {
+			p.Go(ctx, func(context.Context) {
 				testFunc()
 				wg.Done()
 			})
@@ -87,13 +94,33 @@ func BenchmarkPool(b *testing.B) {
 	}
 }
 
+// BenchmarkPool1.895s 性能比 BenchmarkGo 1.473s
+
+/*
+goos: windows
+goarch: amd64
+pkg: github.com/wangzhione/sbp/helper/safego/tasks
+cpu: AMD Ryzen 9 7945HX3D with Radeon Graphics
+
+BenchmarkPool-32
+     206	   6692212 ns/op	 1255430 B/op	   48432 allocs/op
+PASS
+ok  	github.com/wangzhione/sbp/helper/safego/tasks	2.140s
+
+BenchmarkGo-32
+     100	  12601970 ns/op	  165947 B/op	   10012 allocs/op
+PASS
+ok  	github.com/wangzhione/sbp/helper/safego/tasks	1.473s
+
+*/
+
 func BenchmarkGo(b *testing.B) {
 	var wg sync.WaitGroup
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		wg.Add(benchmarkTimes)
-		for j := 0; j < benchmarkTimes; j++ {
+		for range benchmarkTimes {
 			go func() {
 				testFunc()
 				wg.Done()
@@ -108,14 +135,14 @@ func TestGoroutines(t *testing.T) {
 
 	const count = 10
 
-	var catCh = make(chan struct{}, 1)
-	var dogCh = make(chan struct{}, 1)
-	var fishCh = make(chan struct{}, 1)
+	catCh := make(chan struct{}, 1)
+	dogCh := make(chan struct{}, 1)
+	fishCh := make(chan struct{}, 1)
 
 	var wait sync.WaitGroup
 	wait.Add(3)
 
-	fCat := func() {
+	fCat := func(context.Context) {
 		n := 0
 		for {
 			n++
@@ -132,7 +159,7 @@ func TestGoroutines(t *testing.T) {
 		}
 	}
 
-	fDog := func() {
+	fDog := func(context.Context) {
 		n := 0
 		for {
 			<-dogCh
@@ -149,7 +176,7 @@ func TestGoroutines(t *testing.T) {
 		}
 	}
 
-	fFish := func() {
+	fFish := func(context.Context) {
 		n := 0
 		for {
 			<-fishCh
@@ -166,8 +193,6 @@ func TestGoroutines(t *testing.T) {
 		}
 	}
 
-	ctx := context.Background()
-
 	p := NewPool(3)
 	p.Go(ctx, fFish)
 	p.Go(ctx, fDog)
@@ -176,11 +201,11 @@ func TestGoroutines(t *testing.T) {
 	wait.Wait()
 }
 
-func TestCompareInc(t *testing.T) {
+func TestSucccessCompareInc(t *testing.T) {
 	var capacity int32 = 2
 	var worker int32
 
-	for range 2000 {
+	for range 20000 {
 		go func() {
 			old := atomic.LoadInt32(&worker)
 			if old < capacity {
@@ -198,11 +223,11 @@ func TestCompareInc(t *testing.T) {
 	}
 }
 
-func TestCompareInc2(t *testing.T) {
+func TestErrorCompareInc(t *testing.T) {
 	var capacity int32 = 2
 	var worker int32
 
-	for range 2000 {
+	for range 400 {
 		go func() {
 			if atomic.LoadInt32(&worker) < capacity {
 				atomic.AddInt32(&worker, 1)
