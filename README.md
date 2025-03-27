@@ -1,4 +1,4 @@
-更好的选型和补充请异步到 see 👁 [safego](https://github.com/wangzhione/sbp/tree/master/helper/safego) 特别是其中 [chango](https://github.com/wangzhione/sbp/blob/master/helper/safego/chango/chango.go#L17-L23) chan go 模型实战更加有效率
+更好的选型和补充请异步到 see 👁 [safego](https://github.com/wangzhione/sbp/tree/master/helper/safego) 特别是其中 [chango](https://github.com/wangzhione/sbp/blob/master/helper/safego/chango/chango.go) chan go 模型实战更加有效率
 
 # goroutines
 
@@ -22,7 +22,7 @@ goroutines.PanicHandler = func (ctx context.Context, cover any) {
 ```Go
 o := goroutines.NewPool(8)
 
-// ctx 参照 chain.CopyTrace https://github.com/wangzhione/sbp/blob/master/chain/trace.go#L30-L44
+// ctx 参照 chain.CopyTrace https://github.com/wangzhione/sbp/blob/master/chain/trace.go
 o.Go(ctx, func(c context.Context) {
     // Your business
 })
